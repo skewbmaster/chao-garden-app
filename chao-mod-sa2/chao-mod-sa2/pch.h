@@ -13,5 +13,11 @@
 
 #include <stdlib.h>
 #include <string>
+#include <iostream>
+#include <thread>
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
 
 #endif //PCH_H

@@ -1,2 +1,6 @@
 #pragma once
-#include <thread>
+
+int findValidLocalBroadcastIP(std::string &broadcastIP);
+void runServer();
+void setupServer();
+void cleanupNetwork();
