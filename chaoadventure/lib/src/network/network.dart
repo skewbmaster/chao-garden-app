@@ -51,7 +51,8 @@ class Network {
     if (msg.substring(0, 10) == "CHAOGARDEN") {
       _log.info("Received a packet from a chaogarden");
 
-      if (availableComputers.any((x) => x.address.address != packet.address.address)) {
+      if (availableComputers.any((x) => x.address.address != packet.address.address) || availableComputers.isEmpty) {
+        _log.info("New computer detected");
         receivedIP = packet.address;
         updateReceivedIP(packet.address.address);
         availableComputers.add(Computer(packet.address, GardenType.sa2));

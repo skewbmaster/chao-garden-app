@@ -75,6 +75,9 @@ flutter:
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 
+  assets:
+    - assets/spinningring.gif
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
 
@@ -100,3 +103,15 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/custom-fonts/#from-packages
+
+  fonts:
+    - family: Syntha
+      fonts:
+        - asset: assets/fonts/Syntha.ttf
+    - family: Blippo
+      fonts:
+        - asset: assets/fonts/tt0511m_.ttf
+    - family: Kimberley
+      fonts:
+        - asset: assets/fonts/kimberley.otf
+

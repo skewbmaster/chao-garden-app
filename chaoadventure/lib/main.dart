@@ -9,12 +9,11 @@ import 'dart:ui';
 
 import 'src/styles/palette.dart';
 import 'src/network/network.dart';
+import 'src/windows/transferwindow.dart';
 
 Logger _log = Logger('main.dart');
 
 int ringCount = 0;
-
-late Network network;
 
 void main() {
   Logger.root.onRecord.listen((record) {
@@ -27,16 +26,12 @@ void main() {
 
   runApp(const MyApp());
 
-  ringCount = 400;
+  ringCount = 1739;
 
   _log.info(
       "Width: ${window.physicalSize.width} - Height: ${window.physicalSize.height} - PixelRatio: ${window.devicePixelRatio}");
 
   if (Platform.isAndroid || Platform.isIOS) KeepScreenOn.turnOn();
-}
-
-void pressRings() {
-  _log.info("True rings");
 }
 
 class MyApp extends StatelessWidget {
@@ -56,17 +51,24 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Chao Adventure',
       theme: ThemeData.from(
-          colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF0030D0),
-        background: const Color(0xFF0044DD),
-      )),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0030D0),
+          background: const Color(0xFF0044DD),
+        ),
+        textTheme: const TextTheme(
+          headlineMedium: TextStyle(fontFamily: "Blippo"),
+        ),
+      ),
       home: const MyHomePage(title: 'Chao Adventure'),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  const MyHomePage({
+    super.key,
+    required this.title,
+  });
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -80,14 +82,35 @@ class MyHomePage extends StatefulWidget {
   final String title;
 
   @override
-  @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
 
+  bool transferWindowButtonPressed = false;
+
   String addressString = "No address";
+
+  Network? network;
+
+  void openTransferWindow() {
+    if (network == null) {
+      network = Network(_log, updateReceivedIP);
+      network!.mainListen();
+      _log.info("Network field initialised");
+    }
+
+    setState(() {
+      Navigator.of(context).push(TransferWindowPopup<void>());
+    });
+
+    /*showDialog(
+        context: context,
+        builder: (_) => const AlertDialog(
+              content: TransferWindow(),
+            ));*/
+  }
 
   void updateReceivedIP(String newIP) {
     setState(() {
@@ -95,39 +118,47 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void _incrementCounter() {
+  /*void _incrementCounter() {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
       _counter++;
     });
+  }*/
+
+  void pressRings() {
+    _log.info("True rings");
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
+        toolbarHeight: 100,
         actions: const <Widget>[],
         title: Row(
-          children: const <Widget>[
-            IconButton(
-              onPressed: pressRings,
-              icon: Icon(
-                Icons.circle_outlined,
-                size: 40,
+          children: <Widget>[
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  ringCount += 10;
+                });
+              },
+              child: Image.asset(
+                "assets/spinningring.gif",
+                height: 64,
+                width: 64,
+                isAntiAlias: true,
+                fit: BoxFit.scaleDown,
               ),
-              color: const Color(0xFFFFC400),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Text(
+                "${ringCount}",
+                style: const TextStyle(
+                  fontFamily: "Blippo",
+                  fontSize: 32,
+                ),
+              ),
             ),
           ],
         ),
@@ -138,88 +169,128 @@ class _MyHomePageState extends State<MyHomePage> {
             fontWeight: FontWeight.bold,
           ),
         ),*/
-        foregroundColor: const Color(0xFFFFC812),
+        //foregroundColor: const Color(0xFFFFC812),
         backgroundColor: const Color(0x00000000),
         elevation: 0,
       ),
-
       /*floatingActionButton: FloatingActionButton(
         onPressed: _incrementCounter,
         tooltip: 'Increment',
         child: const Icon(Icons.add),
       ),*/
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
           mainAxisAlignment: MainAxisAlignment.end,
           children: <Widget>[
             const Text(
               'Fuck you:',
             ),
             Text(
-              '$addressString${MediaQuery.of(context).size.height}',
+              '$addressString ${MediaQuery.of(context).size.width}',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
-            Container(
-              alignment: Alignment.bottomCenter,
-              height: 90,
-              width: 360,
-              color: const Color(0xFFFFFFFF),
-              child: const BottomButtons(),
-            ),
+            BottomButtons(openTransferWindow: openTransferWindow),
           ],
         ),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      ),
       backgroundColor: const Color(0xFF00FF00),
     );
   }
 
   @override
   void dispose() {
-    network.close();
+    network!.close();
     super.dispose();
   }
 }
 
+/*
+IconButton(
+              onPressed: pressRings,
+              icon: const Icon(
+                Icons.circle_outlined,
+                size: 40,
+              ),
+              color: const Color(0xFFFFC400),
+            ),
+*/
+
 class BottomButtons extends StatelessWidget {
-  const BottomButtons({super.key});
+  const BottomButtons({super.key, required this.openTransferWindow});
 
   final String title = "BottomButtons";
+
+  final Function openTransferWindow;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Ink(
-          child: IconButton(
-            splashRadius: 40,
-            splashColor: Colors.blue,
-            color: Color(0xFFEB17C7),
-            iconSize: 80,
-            onPressed: () {
-              _log.info("pressed");
-            },
-            icon: const Icon(Icons.cable_rounded),
+        Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).size.height / 54.0, right: MediaQuery.of(context).size.height / 54.0),
+          child: Ink(
+            decoration: const ShapeDecoration(
+                shape: /*CircleBorder()*/ RoundedRectangleBorder(
+                  side: BorderSide(),
+                  borderRadius: BorderRadius.all(Radius.circular(20)),
+                ),
+                color: Color(0xFF21DBF3)),
+            child: IconButton(
+              splashRadius: 28,
+              highlightColor: const Color(0x00176CEB),
+              splashColor: const Color(0x00176CEB),
+              color: const Color(0xFF176CEB),
+              iconSize: 70,
+              onPressed: () {
+                _log.info("pressed");
+                openTransferWindow();
+              },
+              icon: const Icon(Icons.cable_sharp),
+            ),
           ),
-          decoration: const ShapeDecoration(shape: CircleBorder(), color: Colors.blue),
         ),
       ],
+    );
+  }
+}
+
+class TopAppBar extends StatelessWidget {
+  const TopAppBar({super.key});
+
+  void pressRings() {
+    _log.info("True rings");
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      // Here we take the value from the MyHomePage object that was created by
+      // the App.build method, and use it to set our appbar title.
+      actions: const <Widget>[],
+      title: Row(
+        children: <Widget>[
+          IconButton(
+            onPressed: pressRings,
+            icon: const Icon(
+              Icons.circle_outlined,
+              size: 40,
+            ),
+            color: const Color(0xFFFFC400),
+          ),
+        ],
+      ),
+      /*Text(
+          "Rings: ${ringCount}",
+          style: const TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+          ),
+        ),*/
+      foregroundColor: const Color(0xFFFFC812),
+      backgroundColor: const Color(0x00000000),
+      elevation: 0,
     );
   }
 }
