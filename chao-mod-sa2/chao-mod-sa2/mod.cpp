@@ -6,13 +6,16 @@ std::string modpath;
 
 std::thread serverThread;
 
+Network network;
+
 extern "C" {
 	__declspec(dllexport) void __cdecl Init(const char* path, const HelperFunctions& helperFunctions)
 	{
 		HelperFunctionsGlobal = helperFunctions; // Save the helper pointer for external use
 		modpath = path;
 
-		setupServer();
+		network = Network();
+		network.setupServer();
 	}
 
 	__declspec(dllexport) void __cdecl OnFrame()
@@ -31,7 +34,7 @@ extern "C" {
 				if (serverThread.joinable())
 					serverThread.join();
 				
-				serverThread = std::thread(runServer);
+				serverThread = std::thread(&Network::runBroadcaster, network);
 			}
 			else if (controller->press & Buttons_Left)
 			{
@@ -42,7 +45,7 @@ extern "C" {
 
 	__declspec(dllexport) void __cdecl OnExit()
 	{
-		cleanupNetwork();
+		network.cleanupNetwork();
 
 		if (serverThread.joinable())
 			serverThread.join();

@@ -7,158 +7,248 @@
 #define BROADCAST_PORT 8888
 #define TCP_PORT 8889
 
-//struct sockaddr_in si_other;
-SOCKET senderSocket, recverSocket;
-addrinfo* socket_addrinfo_sender;
-addrinfo* socket_addrinfo_recver;
+//std::thread connectionThread;
 
-void runServer()
+Network::Network()
 {
-	/*udpReceiver = kn::udp_socket(kn::endpoint("0.0.0.0", 8889));
-	PrintDebug("Made that other socket");
-	udpReceiver.bind();
-	PrintDebug("Binded");
+	broadcastSocket = INVALID_SOCKET;
+	commsSocket = INVALID_SOCKET;
 
-	udpReceiver.set_non_blocking(true);
+	socket_addrinfo_sender = new addrinfo;
+	socket_addrinfo_recver = new addrinfo;
+}
 
-	kn::buffer<128> recv_buff;
-	kn::addr_collection addr;
+void Network::setNonBlocking(SOCKET* socket, bool state)
+{
+	u_long ulstate = (u_long)state;
+	if (ioctlsocket(*socket, FIONBIO, &ulstate) != 0)
+	{
+		printf("Couldn't set non-blocking state of socket\n");
+	}
+	else
+	{
+		printf("Set non-blocking state of socket to %s\n", (state ? "on" : "off"));
+	}
+}
+
+void Network::runConnection(SOCKET connectionSocket, int)
+{
+	const int bufferlen = 1024;
+	char recvbuffer[bufferlen];
+	char sendbuffer[bufferlen];
+
+	int result = recv(connectionSocket, recvbuffer, bufferlen, 0);
+
+	if (result > 0)
+	{
+		std::string recvString = (std::string)recvbuffer;
+
+		printf("Data received: %s\n", recvbuffer);
+		if (recvString.substr(0, 15) != "CHAOADV CONNECT")
+		{
+			printf("Incorrect signal to connect\n");
+			shutdown(connectionSocket, SD_SEND);
+			closesocket(connectionSocket);
+			return;
+		}
+		printf("Connection Established\n");
+		sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN ACCEPT");
+		result = send(connectionSocket, sendbuffer, strlen(sendbuffer), 0);
+		if (result == SOCKET_ERROR)
+		{
+			printf("Send failed: %d\n", WSAGetLastError());
+			closesocket(connectionSocket);
+			return;
+		}
+	}
+	else if (result < 1)
+	{
+		shutdown(connectionSocket, SD_SEND);
+		closesocket(connectionSocket);
+		return;
+	}
+
+	printf("Sent back confirmation of connection\n");
 	while (true)
 	{
-		auto [received_bytes, status] = udpReceiver.recv(recv_buff);
-		if (received_bytes > 0)
+		result = recv(connectionSocket, recvbuffer, bufferlen, 0);
+		if (result < 1)
 		{
-			PrintDebug("Bytes available: %d\n", received_bytes);
+			printf("Keepalive Receive failed: %d\n", WSAGetLastError());
+			closesocket(connectionSocket);
+			return;
 		}
-		//PrintDebug("Funny received");
-		//if (!received_bytes || status != kissnet::socket_status::valid) {
-			//break;
-		//}
-		//PrintDebug("Got %d\n", std::to_integer<int>(recv_buff[1]));
+
+		std::string recvString = (std::string)recvbuffer;
+
+		if (recvString.substr(0, 17) != "CHAOADV KEEPALIVE")
+		{
+			printf("Didn't receive keepalive message\n");
+			closesocket(connectionSocket);
+			return;
+		}
+
+		printf("Received keepalive message: %s\n", recvbuffer);
+
+		sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN KEEPALIVE");
+		result = send(connectionSocket, sendbuffer, strlen(sendbuffer), 0);
+		if (result == SOCKET_ERROR)
+		{
+			printf("Keepalive Send failed: %d\n", WSAGetLastError());
+			closesocket(connectionSocket);
+			return;
+		}
 	}
-	PrintDebug("Server fucked off\n");*/
-	//kn::socket<kn::protocol::udp>
+}
+
+void Network::runBroadcaster()
+{
+	SOCKET AcceptSocket = INVALID_SOCKET;
+
+	int randNum = rand();
 
 	char sendBuffer[1024];
-	char recverBuffer[1024];
+	sprintf_s<1024>(sendBuffer, "CHAOGARDEN %x", randNum);
+
+	setNonBlocking(&commsSocket, true);
+
+	if (listen(commsSocket, 5) == SOCKET_ERROR)
+	{
+		printf("Receiver socket listen failed with error: %d\n", WSAGetLastError());
+		return;
+	}
+	printf("Listening for connections\n");
 
 	while (true)
 	{
-		int randNum = rand();
-		sprintf_s<1024>(sendBuffer, "CHAOGARDENAPP%d", randNum);
-
-		if (sendto(senderSocket, sendBuffer, strlen(sendBuffer), 0, static_cast<SOCKADDR*>(socket_addrinfo_sender->ai_addr), socklen_t(socket_addrinfo_sender->ai_addrlen)) == SOCKET_ERROR)
+		if (sendto(broadcastSocket, sendBuffer, strlen(sendBuffer), 0, static_cast<SOCKADDR*>(socket_addrinfo_sender->ai_addr), socklen_t(socket_addrinfo_sender->ai_addrlen)) == SOCKET_ERROR)
 		{
-			PrintDebug("Didnt send shit: %ld\n", WSAGetLastError());
+			printf("Didnt send shit: %ld\n", WSAGetLastError());
 		}
 		else
 		{
-			PrintDebug("Attempted to broadcast the number %d\n", randNum);
+			printf("Attempted to broadcast the number %x\n", randNum);
 		}
 
-		if (listen(recverSocket, 2) == SOCKET_ERROR)
+		AcceptSocket = accept(commsSocket, NULL, NULL);
+
+		if (AcceptSocket != INVALID_SOCKET)
 		{
-			PrintDebug("Receiver socket listen failed with error: %d\n", WSAGetLastError());
+			printf("Accepted socket\n");
+			setNonBlocking(&commsSocket, false);
+			runConnection(AcceptSocket, randNum);
 		}
 
+		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
 	}
 }
 
-void setupServer()
+void Network::setupServer()
 {
-	std::string localIPandSubnet;
-	if (int findResult = findValidLocalBroadcastIP(localIPandSubnet) != 0)
+	std::string localBroadcastIP;
+	int iResult = findValidLocalBroadcastIP(localBroadcastIP);
+	if (iResult != 0)
 	{
-		PrintDebug("Failed to create broadcast IP. IDK WHY HAHA, but I do here's the error code I arbitrarily made: %d\n", findResult);
+		printf("Failed to create broadcast IP. IDK WHY HAHA, but I do here's the error code I arbitrarily made: %d\n", iResult);
 		return;
 	}
 	else
 	{
-		PrintDebug("Broadcasting to: %s\n", localIPandSubnet.c_str());
+		printf("Broadcasting to: %s\n", localBroadcastIP.c_str());
 	}
 
 	WSADATA wsaData;
-	if (int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	printf("Used WSAStartup!\n");
+	if (iResult != 0)
 	{
-		PrintDebug("WSAStartup Failed : %d\n", iResult);
+		printf("WSAStartup Failed : %d\n", iResult);
 		WSACleanup();
 		return;
 	}
 	else
 	{
-		PrintDebug("Winsock DLL status is %s\n", wsaData.szSystemStatus);
+		printf("Winsock DLL status is %s\n", wsaData.szSystemStatus);
 	}
 
-	addrinfo getaddrinfo_hints_sender = {};
-	addrinfo getaddrinfo_hints_recver = {};
+	addrinfo hints_broadcast;
+	addrinfo hints_comms;
+	memset(&hints_broadcast, 0, sizeof(hints_broadcast));
+	memset(&hints_comms, 0, sizeof(hints_comms));
 
-	getaddrinfo_hints_sender.ai_family = AF_UNSPEC;
-	getaddrinfo_hints_sender.ai_socktype = SOCK_DGRAM;
-	getaddrinfo_hints_sender.ai_protocol = IPPROTO_UDP;
-	getaddrinfo_hints_sender.ai_flags = AI_ADDRCONFIG;
+	hints_broadcast.ai_family = AF_UNSPEC;
+	hints_broadcast.ai_socktype = SOCK_DGRAM;
+	hints_broadcast.ai_protocol = IPPROTO_UDP;
+	hints_broadcast.ai_flags = AI_ADDRCONFIG;
 
-	getaddrinfo_hints_recver.ai_family = AF_UNSPEC;
-	getaddrinfo_hints_recver.ai_socktype = SOCK_STREAM;
-	getaddrinfo_hints_recver.ai_protocol = IPPROTO_TCP;
-	getaddrinfo_hints_recver.ai_flags = AI_ADDRCONFIG;
+	hints_comms.ai_family = AF_INET;
+	hints_comms.ai_socktype = SOCK_STREAM;
+	hints_comms.ai_protocol = IPPROTO_TCP;
+	hints_comms.ai_flags = AI_PASSIVE;
 
 	addrinfo* getaddrinfo_results = nullptr;
-	if (getaddrinfo(localIPandSubnet.c_str(), std::to_string(BROADCAST_PORT).c_str(), &getaddrinfo_hints_sender, &getaddrinfo_results) != 0)
+	iResult = getaddrinfo(localBroadcastIP.c_str(), std::to_string(BROADCAST_PORT).c_str(), &hints_broadcast, &getaddrinfo_results);
+	if (iResult != 0)
 	{
-		PrintDebug("getaddrinfo failed!\n");
+		printf("getaddrinfo failed! %d\n", WSAGetLastError());
+		freeaddrinfo(getaddrinfo_results);
+		WSACleanup();
 		return;
 	}
-	for (addrinfo* addr = getaddrinfo_results; addr; addr = addr->ai_next)
+	broadcastSocket = socket(getaddrinfo_results->ai_family, getaddrinfo_results->ai_socktype, getaddrinfo_results->ai_protocol);
+	if (broadcastSocket != INVALID_SOCKET)
 	{
-		senderSocket = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
-		if (senderSocket != INVALID_SOCKET)
-		{
-			PrintDebug("Made sender socket\n");
-			socket_addrinfo_sender = addr;
-			break;
-		}
+		printf("Made broadcast socket\n");
+		memcpy_s(socket_addrinfo_sender, sizeof(addrinfo), getaddrinfo_results, sizeof(addrinfo));
 	}
-	if (senderSocket == INVALID_SOCKET)
+	else
 	{
-		PrintDebug("Unable to make sender socket\n");
+		printf("Unable to make broadcast socket: %d\n", WSAGetLastError());
+		freeaddrinfo(getaddrinfo_results);
 		WSACleanup();
 		return;
 	}
 
-	if (getaddrinfo("0.0.0.0", std::to_string(TCP_PORT).c_str(), &getaddrinfo_hints_recver, &getaddrinfo_results) != 0)
+	iResult = getaddrinfo(NULL, std::to_string(TCP_PORT).c_str(), &hints_comms, &getaddrinfo_results);
+	if (iResult != 0)
 	{
-		PrintDebug("getaddrinfo failed!\n");
+		printf("getaddrinfo failed! %d\n", WSAGetLastError());
+		freeaddrinfo(getaddrinfo_results);
+		closesocket(broadcastSocket);
 		WSACleanup();
 		return;
 	}
-	for (addrinfo* addr = getaddrinfo_results; addr; addr = addr->ai_next)
+	commsSocket = socket(getaddrinfo_results->ai_family, getaddrinfo_results->ai_socktype, getaddrinfo_results->ai_protocol);
+	if (commsSocket != INVALID_SOCKET)
 	{
-		recverSocket = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
-		if (recverSocket != INVALID_SOCKET)
-		{
-			PrintDebug("Made sender socket\n");
-			socket_addrinfo_recver = addr;
-			break;
-		}
+		printf("Made comms socket\n");
+		memcpy_s(socket_addrinfo_recver, sizeof(addrinfo), getaddrinfo_results, sizeof(addrinfo));
 	}
-	if (recverSocket == INVALID_SOCKET)
+	else
 	{
-		PrintDebug("Unable to make receiver socket\n");
+		printf("Unable to make comms socket: %d\n", WSAGetLastError());
+		closesocket(broadcastSocket);
 		WSACleanup();
 		return;
 	}
 
-	if (bind(recverSocket, static_cast<SOCKADDR*>(socket_addrinfo_recver->ai_addr), socklen_t(socket_addrinfo_recver->ai_addrlen)) == SOCKET_ERROR)
+	iResult = bind(commsSocket, static_cast<SOCKADDR*>(socket_addrinfo_recver->ai_addr), socklen_t(socket_addrinfo_recver->ai_addrlen));
+	if (iResult == SOCKET_ERROR)
 	{
-		PrintDebug("Couldn't bind receiver socket with error: %d\n", WSAGetLastError());
+		printf("Couldn't bind comms socket with error: %d\n", WSAGetLastError());
+		closesocket(broadcastSocket);
+		closesocket(commsSocket);
 		WSACleanup();
 		return;
 	}
 	else
 	{
-		PrintDebug("Binded receiver socket!\n");
+		printf("Binded comms socket!\n");
 	}
+
+	freeaddrinfo(getaddrinfo_results);
+	isSetup = true;
 }
 
 void sendData()
@@ -180,14 +270,16 @@ void sendData()
 	
 }
 
-void cleanupNetwork()
+void Network::cleanupNetwork()
 {
-	closesocket(senderSocket);
-	closesocket(recverSocket);
+	closesocket(broadcastSocket);
+	closesocket(commsSocket);
 	WSACleanup();
+
+	isSetup = false;
 }
 
-int findValidLocalBroadcastIP(std::string &broadcastIP)
+int Network::findValidLocalBroadcastIP(std::string& broadcastIP)
 {
 	PMIB_IPADDRTABLE IPTable = (MIB_IPADDRTABLE*)malloc(sizeof(MIB_IPADDRTABLE));
 	if (IPTable == NULL)
