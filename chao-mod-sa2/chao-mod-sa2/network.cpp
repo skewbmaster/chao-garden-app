@@ -31,7 +31,7 @@ void Network::setNonBlocking(SOCKET* socket, bool state)
 	}
 }
 
-void Network::runConnection(SOCKET connectionSocket, int)
+void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, int addrLen)
 {
 	const int bufferlen = 1024;
 	char recvbuffer[bufferlen];
@@ -39,19 +39,9 @@ void Network::runConnection(SOCKET connectionSocket, int)
 
 	int result = recv(connectionSocket, recvbuffer, bufferlen, 0);
 
-	if (result > 0)
+	switch (handleIncomingMessage(recvbuffer, result))
 	{
-		std::string recvString = (std::string)recvbuffer;
-
-		printf("Data received: %s\n", recvbuffer);
-		if (recvString.substr(0, 15) != "CHAOADV CONNECT")
-		{
-			printf("Incorrect signal to connect\n");
-			shutdown(connectionSocket, SD_SEND);
-			closesocket(connectionSocket);
-			return;
-		}
-		printf("Connection Established\n");
+	case ConnectRequest:
 		sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN ACCEPT");
 		result = send(connectionSocket, sendbuffer, strlen(sendbuffer), 0);
 		if (result == SOCKET_ERROR)
@@ -60,55 +50,113 @@ void Network::runConnection(SOCKET connectionSocket, int)
 			closesocket(connectionSocket);
 			return;
 		}
-	}
-	else if (result < 1)
-	{
+		else
+		{
+			printf("Connection Established\n");
+			break;
+		}
+	default:
 		shutdown(connectionSocket, SD_SEND);
 		closesocket(connectionSocket);
 		return;
 	}
 
 	printf("Sent back confirmation of connection\n");
+
 	while (true)
 	{
+		if (wantToClose)
+		{
+			shutdown(connectionSocket, SD_SEND);
+			closesocket(connectionSocket);
+			return;
+		}
+
 		result = recv(connectionSocket, recvbuffer, bufferlen, 0);
-		if (result < 1)
+		switch (handleIncomingMessage(recvbuffer, result))
 		{
-			printf("Keepalive Receive failed: %d\n", WSAGetLastError());
-			closesocket(connectionSocket);
-			return;
-		}
-
-		std::string recvString = (std::string)recvbuffer;
-
-		if (recvString.substr(0, 17) != "CHAOADV KEEPALIVE")
-		{
-			printf("Didn't receive keepalive message\n");
-			closesocket(connectionSocket);
-			return;
-		}
-
-		printf("Received keepalive message: %s\n", recvbuffer);
-
-		sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN KEEPALIVE");
-		result = send(connectionSocket, sendbuffer, strlen(sendbuffer), 0);
-		if (result == SOCKET_ERROR)
-		{
-			printf("Keepalive Send failed: %d\n", WSAGetLastError());
+		case Keepalive:
+			printf("Received keepalive message: %s\n", recvbuffer);
+			sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN KEEPALIVE");
+			result = send(connectionSocket, sendbuffer, strlen(sendbuffer), 0);
+			if (result == SOCKET_ERROR)
+			{
+				printf("Keepalive Send failed: %d\n", WSAGetLastError());
+				closesocket(connectionSocket);
+				return;
+			}
+			break;
+		case Closed:
+		case Failure:
+			shutdown(connectionSocket, SD_SEND);
 			closesocket(connectionSocket);
 			return;
 		}
 	}
 }
 
+// Handles all recv calls after they've been made
+// The pointer to the recieved data buffer and the result of the recv are passed into this function
+// The function returns an appropriate status enum to the caller in runConnection
+Network::receivedMessageStatus Network::handleIncomingMessage(char* buffer, int recvResult)
+{
+	if (recvResult < 0)
+	{
+		printf("Error received!\n");
+		return Failure;
+	}
+	else if (recvResult == 0)
+	{
+		printf("Accepted socket closed connection\n");
+		return Closed;
+	}
+
+	std::string recvString = (std::string)buffer;
+
+	printf("Data received: %s\n", buffer);
+	if (recvString.substr(0, 7) != "CHAOADV")
+	{
+		printf("Incorrect prefix signal\n");
+		return NotChaoADV;
+	}
+
+	std::string msgRequest = recvString.substr(8, recvString.length() - 8);
+
+	if (msgRequest == "CONNECT")
+	{
+		printf("Phone wants to connect\n");
+		return ConnectRequest;
+	}
+	else if (msgRequest == "KEEPALIVE")
+	{
+		printf("Keepalive message received\n");
+		return Keepalive;
+	}
+	else if (msgRequest == "CLOSE")
+	{
+		printf("Phone would like to close connection\n");
+		return Closed;
+	}
+	else if (msgRequest == "WHATCHAO")
+	{
+		printf("Request to see chao\n");
+		return SeeChaoRequest;
+	}
+}
+
 void Network::runBroadcaster()
 {
 	SOCKET AcceptSocket = INVALID_SOCKET;
+	sockaddr* acceptedAddr = new sockaddr;
+	int acceptedAddrLen = 0;
 
 	int randNum = rand();
 
+	char hostname[256];
+	gethostname(hostname, 256);
+
 	char sendBuffer[1024];
-	sprintf_s<1024>(sendBuffer, "CHAOGARDEN %x", randNum);
+	sprintf_s<1024>(sendBuffer, "CHAOGARDEN SA2 %s", hostname);
 
 	setNonBlocking(&commsSocket, true);
 
@@ -127,16 +175,22 @@ void Network::runBroadcaster()
 		}
 		else
 		{
-			printf("Attempted to broadcast the number %x\n", randNum);
+			printf("Attempted to broadcast %s\n", sendBuffer);
 		}
 
-		AcceptSocket = accept(commsSocket, NULL, NULL);
+		AcceptSocket = accept(commsSocket, acceptedAddr, &acceptedAddrLen);
 
 		if (AcceptSocket != INVALID_SOCKET)
 		{
 			printf("Accepted socket\n");
 			setNonBlocking(&commsSocket, false);
-			runConnection(AcceptSocket, randNum);
+			runConnection(AcceptSocket, acceptedAddr, acceptedAddrLen);
+		}
+
+		if (wantToClose)
+		{
+			wantToClose = false;
+			return;
 		}
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -272,11 +326,12 @@ void sendData()
 
 void Network::cleanupNetwork()
 {
+	isSetup = false;
+	wantToClose = true;
+
 	closesocket(broadcastSocket);
 	closesocket(commsSocket);
 	WSACleanup();
-
-	isSetup = false;
 }
 
 int Network::findValidLocalBroadcastIP(std::string& broadcastIP)

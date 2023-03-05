@@ -29,22 +29,25 @@ extern "C" {
 
 		if (controller)
 		{
-			if (controller->press & Buttons_Up)
+			if (controller->press & Buttons_Y && controller->on & Buttons_Left)
 			{
 				if (serverThread.joinable())
 					serverThread.join();
+
+				printf("started broadcaster\n");
 				
-				serverThread = std::thread(&Network::runBroadcaster, network);
+				serverThread = std::thread(&Network::runBroadcaster, &network);
 			}
-			else if (controller->press & Buttons_Left)
+			/*else if (controller->press & Buttons_Left)
 			{
 				serverThread.join();
-			}
+			}*/
 		}
 	}
 
 	__declspec(dllexport) void __cdecl OnExit()
 	{
+		printf("exiting\n");
 		network.cleanupNetwork();
 
 		if (serverThread.joinable())

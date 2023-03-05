@@ -1,9 +1,6 @@
-[submodule "sadx-mod-loader"]
-	path = chao-garden-interface/sadx-mod-loader
-	url = https://github.com/X-Hax/sadx-mod-loader.git
-[submodule "chao-garden-interface/sadx-mod-loader"]
-	path = chao-garden-interface/sadx-mod-loader
-	url = https://github.com/X-Hax/sadx-mod-loader.git
 [submodule "chao-mod-sa2/sa2-mod-loader"]
 	path = chao-mod-sa2/sa2-mod-loader
 	url = https://github.com/X-Hax/sa2-mod-loader.git
+[submodule "chao-mod-sadx/sadx-mod-loader"]
+	path = chao-mod-sadx/sadx-mod-loader
+	url = https://github.com/X-Hax/sadx-mod-loader.git
