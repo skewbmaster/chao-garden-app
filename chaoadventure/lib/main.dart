@@ -26,7 +26,7 @@ void main() {
 
   runApp(const MyApp());
 
-  ringCount = 1739;
+  ringCount = 1750;
 
   _log.info(
       "Width: ${window.physicalSize.width} - Height: ${window.physicalSize.height} - PixelRatio: ${window.devicePixelRatio}");
@@ -56,7 +56,7 @@ class MyApp extends StatelessWidget {
           background: const Color(0xFF0044DD),
         ),
         textTheme: const TextTheme(
-          headlineMedium: TextStyle(fontFamily: "Blippo"),
+          headlineMedium: TextStyle(fontFamily: "Kimberley"),
         ),
       ),
       home: const MyHomePage(title: 'Chao Adventure'),
@@ -92,17 +92,20 @@ class _MyHomePageState extends State<MyHomePage> {
 
   String addressString = "No address";
 
-  Network? network;
+  late Network network;
+
+  _MyHomePageState() {
+    network = Network(_log, updateReceivedIP);
+  }
 
   void openTransferWindow() {
-    if (network == null) {
-      network = Network(_log, updateReceivedIP);
-      network!.mainListen();
+    /*if (!network.listening) {
+      network.mainListen();
       _log.info("Network field initialised");
-    }
+    }*/
 
     setState(() {
-      Navigator.of(context).push(TransferWindowPopup<void>());
+      Navigator.of(context).push(TransferWindowPopup<void>(network));
     });
 
     /*showDialog(
@@ -182,13 +185,13 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.end,
           children: <Widget>[
-            const Text(
+            /*const Text(
               'Fuck you:',
             ),
             Text(
-              '$addressString ${MediaQuery.of(context).size.width}',
+              addressString,
               style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            ),*/
             BottomButtons(openTransferWindow: openTransferWindow),
           ],
         ),
@@ -199,7 +202,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   void dispose() {
-    network!.close();
+    network.close();
     super.dispose();
   }
 }

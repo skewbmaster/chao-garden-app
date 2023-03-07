@@ -77,6 +77,8 @@ flutter:
 
   assets:
     - assets/spinningring.gif
+    - assets/chaogardensadxlogo.png
+    - assets/chaogardensa2logo.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
@@ -114,4 +116,5 @@ flutter:
     - family: Kimberley
       fonts:
         - asset: assets/fonts/kimberley.otf
+      
 
