@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "network.h"
+#include "skoobhash.h"
 
 #pragma comment(lib, "IPHLPAPI.lib")
 #pragma comment(lib, "ws2_32.lib")
@@ -11,13 +12,18 @@
 
 //std::thread connectionThread;
 
-Network::Network()
+Network::Network(std::string gameName)
 {
 	broadcastSocket = INVALID_SOCKET;
 	commsSocket = INVALID_SOCKET;
 
 	socket_addrinfo_sender = new addrinfo;
 	socket_addrinfo_recver = new addrinfo;
+
+	this->gameName = gameName;
+
+	chaobuffer = new CHAO_PARAM_GC;
+	chaobufferHash = 0;
 }
 
 void Network::setNonBlocking(SOCKET* socket, bool state)
@@ -35,7 +41,7 @@ void Network::setNonBlocking(SOCKET* socket, bool state)
 
 void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, int addrLen)
 {
-	const int bufferlen = 1024;
+	const int bufferlen = 2048;
 	char recvbuffer[bufferlen];
 	char sendbuffer[bufferlen];
 
@@ -66,6 +72,7 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 	}
 
 	int retries = 0;
+	isConnected = true;
 
 	while (true)
 	{
@@ -76,11 +83,34 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 			return;
 		}
 
+		if (wantToSendChao)
+		{
+			sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN SENDCHAO %X ", chaobufferHash);
+			int sizeOfBuffer = strlen(sendbuffer);
+			memcpy_s(sendbuffer + sizeOfBuffer, bufferlen - sizeOfBuffer, chaobuffer, sizeof(CHAO_PARAM_GC));
+			sizeOfBuffer += sizeof(CHAO_PARAM_GC);
+			send(connectionSocket, sendbuffer, sizeOfBuffer, 0);
+			if (result == SOCKET_ERROR)
+			{
+				printf("Chao send failed: %d\n", WSAGetLastError());
+				closesocket(connectionSocket);
+				chaoSendFail = true;
+				return;
+			}
+			printf("Sent chao: %s\n", sendbuffer);
+		}
+
 		result = recv(connectionSocket, recvbuffer, bufferlen, 0);
 		switch (handleIncomingMessage(recvbuffer, result))
 		{
+		case TransferToPhoneSuccess:
+			wantToSendChao = false;
+			chaoSent = true;
 		case Keepalive:
 			retries = 0;
+
+			if (wantToSendChao)
+				break;
 
 			sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN KEEPALIVE");
 			result = send(connectionSocket, sendbuffer, strlen(sendbuffer), 0);
@@ -89,6 +119,18 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 				printf("Keepalive Send failed: %d\n", WSAGetLastError());
 				closesocket(connectionSocket);
 				return;
+			}
+			break;
+		case TransferToPhoneFailure:
+			if (retries == RETRYCOUNT / 2)
+			{
+				chaoSendFail = true;
+				wantToSendChao = false;
+				retries = 0;
+			}
+			else
+			{
+				retries++;
 			}
 			break;
 		case Closed:
@@ -130,13 +172,15 @@ Network::receivedMessageStatus Network::handleIncomingMessage(char* buffer, int 
 	std::string recvString = (std::string)buffer;
 
 	printf("Data received: %s\n", buffer);
-	if (recvString.substr(0, 7) != "CHAOADV")
+	if (recvString.substr(0, 7) != "CHAOADV" || recvString.length() < 9)
 	{
 		printf("Incorrect prefix signal\n");
 		return NotChaoADV;
 	}
+	int stringOffset = 8;
 
-	std::string msgRequest = recvString.substr(8, recvString.length() - 8);
+	std::string msgRequest = recvString.substr(stringOffset, recvString.find(' ', stringOffset));
+	stringOffset += msgRequest.length();
 
 	if (msgRequest == "CONNECT")
 	{
@@ -153,10 +197,15 @@ Network::receivedMessageStatus Network::handleIncomingMessage(char* buffer, int 
 		printf("Phone would like to close connection\n");
 		return Closed;
 	}
-	else if (msgRequest == "WHATCHAO")
+	else if (msgRequest == "CHAOGOOD")
 	{
-		printf("Request to see chao\n");
-		return SeeChaoRequest;
+		printf("Chao sent successfully\n");
+		return TransferToPhoneSuccess;
+	}
+	else if (msgRequest == "CHAOBAD")
+	{
+		printf("Chao sent wrong\n");
+		return TransferToPhoneFailure;
 	}
 }
 
@@ -196,12 +245,12 @@ void Network::runBroadcaster()
 
 		AcceptSocket = accept(commsSocket, acceptedAddr, &acceptedAddrLen);
 
-
 		if (AcceptSocket != INVALID_SOCKET)
 		{
 			printf("Accepted socket\n");
 			//setNonBlocking(&commsSocket, false);
 			runConnection(AcceptSocket, acceptedAddr, acceptedAddrLen);
+			isConnected = false;
 		}
 
 		if (wantToClose)
@@ -211,7 +260,6 @@ void Network::runBroadcaster()
 		}
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
 	}
 }
 
@@ -322,23 +370,21 @@ void Network::setupServer()
 	isSetup = true;
 }
 
-void sendData()
+void Network::sendChao(CHAO_PARAM_GC* chaoToSend)
 {
-	/*server.sin_addr.S_un.S_addr = inet_addr("192.168.31.255");
-	server.sin_family = AF_INET;
-	server.sin_port = htons(8888);
+	memcpy_s(this->chaobuffer, sizeof(CHAO_PARAM_GC), chaoToSend, sizeof(CHAO_PARAM_GC));
+	chaobufferHash = SkoobHashOnMem(this->chaobuffer, sizeof(CHAO_PARAM_GC), INITSEED);
+	wantToSendChao = true;
+}
 
-	int randNum = rand();
-	if (sendto(senderSocket, std::to_string(randNum).c_str(), std::to_string(randNum).size(), NULL, (struct sockaddr*)&server, sizeof(server)) == SOCKET_ERROR)
-	{
-		PrintDebug("sendto fucking failed: %d\n", WSAGetLastError());
-	}
-	else
-	{
-		PrintDebug("sent this shit: %d\n", randNum);
-	}*/
+CHAO_PARAM_GC* Network::receiveChao()
+{
+	return this->chaobuffer;
+}
 
-	
+void Network::closeBroadcaster()
+{
+	wantToClose = true;
 }
 
 void Network::cleanupNetwork()
@@ -349,6 +395,8 @@ void Network::cleanupNetwork()
 	closesocket(broadcastSocket);
 	closesocket(commsSocket);
 	WSACleanup();
+
+	free(this->chaobuffer);
 }
 
 int Network::findValidLocalBroadcastIP(std::string& broadcastIP)
@@ -394,4 +442,24 @@ int Network::findValidLocalBroadcastIP(std::string& broadcastIP)
 		}
 	}
 	return 3;
+}
+
+bool Network::getIsConnected()
+{
+	return this->isConnected;
+}
+
+int Network::getIsSentChao()
+{
+	if (chaoSendFail || !isConnected)
+		return 2; // Fail enum
+	
+	return chaoSent; // 0 for not sent yet, 1 for successfully sent
+}
+
+void Network::confirmChaoMessage()
+{
+	wantToSendChao = false;
+	chaoSendFail = false;
+	chaoSent = false;
 }

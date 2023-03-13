@@ -24,6 +24,12 @@
     <ClInclude Include="network.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="chaomachinehacks.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="skoobhash.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="mod.cpp">
@@ -33,6 +39,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="network.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="chaomachinehacks.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="skoobhash.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
