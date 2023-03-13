@@ -10,10 +10,13 @@ import 'dart:ui';
 import 'src/styles/palette.dart';
 import 'src/network/network.dart';
 import 'src/windows/transferwindow.dart';
+import 'src/chao/chao.dart';
 
 Logger _log = Logger('main.dart');
 
 int ringCount = 0;
+
+List<Chao> chaoList = [];
 
 void main() {
   Logger.root.onRecord.listen((record) {
@@ -90,12 +93,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   bool transferWindowButtonPressed = false;
 
-  String addressString = "No address";
-
   late Network network;
 
   _MyHomePageState() {
-    network = Network(_log, updateReceivedIP);
+    network = Network(_log, addInChao, checkChaoDuplicate);
   }
 
   void openTransferWindow() {
@@ -115,10 +116,12 @@ class _MyHomePageState extends State<MyHomePage> {
             ));*/
   }
 
-  void updateReceivedIP(String newIP) {
-    setState(() {
-      addressString = newIP;
-    });
+  void addInChao(Chao newChao) {
+    chaoList.add(newChao);
+  }
+
+  bool checkChaoDuplicate(int hash) {
+    return chaoList.any((x) => x.initialHash == hash);
   }
 
   /*void _incrementCounter() {

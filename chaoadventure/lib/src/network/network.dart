@@ -1,12 +1,15 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:chaoadventure/src/network/skoobhash.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import 'dart:async';
 import 'dart:io';
 
+import '../chao/chao.dart';
 import 'computers.dart';
 
 class Network {
@@ -17,17 +20,24 @@ class Network {
 
   late bool listening;
   late bool connectedWithComputer;
+  late bool failureInComms;
+  late bool wantToSend;
+  late String newSendMessage;
 
-  final Function(String) updateReceivedIP;
+  final Function(Chao) addInChao;
+  final bool Function(int) checkChaoDuplicate;
 
   late void Function(Computer newComputer) updateAvailableComputers;
   late bool hasUpdateAvailableComputersFunc;
 
-  Network(this._log, this.updateReceivedIP) {
+  Network(this._log, this.addInChao, this.checkChaoDuplicate) {
     //_log = logger;
     listening = false;
     hasUpdateAvailableComputersFunc = false;
     connectedWithComputer = false;
+    failureInComms = false;
+    wantToSend = false;
+    newSendMessage = "CHAOADV KEEPALIVE\u0000";
   }
 
   void close() {}
@@ -87,7 +97,6 @@ class Network {
 
     if (!availableComputers.any((x) => (x.address.address == packet.address.address && x.gardenType == gardenRequesting)) ||
         availableComputers.isEmpty) {
-      updateReceivedIP(msgSplit[2]);
       Computer newComputer = Computer(
         packet.address,
         msgSplit[2],
@@ -131,12 +140,23 @@ class Network {
     socket.write("CHAOADV KEEPALIVE\u0000");
     Timer.periodic(const Duration(milliseconds: 800), (timer) {
       try {
-        socket.write("CHAOADV KEEPALIVE\u0000");
+        if (wantToSend) {
+          socket.write(newSendMessage);
+          wantToSend = false;
+          newSendMessage = "CHAOADV KEEPALIVE\u0000";
+        } else {
+          socket.write("CHAOADV KEEPALIVE\u0000");
+        }
+
+        if (failureInComms) {
+          throw Error();
+        }
       } catch (e) {
-        _log.info("Error sending keepalive message to server: $e");
+        _log.info("Error interacting with server: $e");
         timer.cancel();
         socket.close();
         connectedWithComputer = false;
+        failureInComms = false;
       }
     });
   }
@@ -146,7 +166,39 @@ class Network {
 
     _log.info(data);
 
-    if (data == "CHAOGARDEN ACCEPT") {}
+    List<String> splitData = data.split(' ');
+
+    if (splitData[0] != "CHAOGARDEN") {
+      failureInComms = true;
+    }
+
+    if (splitData[1] == "ACCEPT") {
+      _log.info("Computer accepted connection");
+    } else if (splitData[1] == "KEEPALIVE") {
+      _log.info("Computer sent keepalive message");
+    } else if (splitData[1] == "SENDCHAO") {
+      int? hash = int.tryParse(splitData[2], radix: 16);
+      int selfhash = SkoobHash.skoobHashOnData(splitData[3], SkoobHash.INITSEED);
+
+      if (checkChaoDuplicate(hash!)) {
+        _log.info("Already sent this chao");
+        return;
+      }
+
+      if (hash == selfhash) {
+        _log.info("Successfully received chao data");
+        Chao receivedChao = Chao(Uint8List.fromList(splitData[3].codeUnits), selfhash);
+        addInChao(receivedChao);
+        newSendMessage = "CHAOADV CHAOGOOD\u0000";
+      } else {
+        newSendMessage = "CHAOADV CHAOBAD\u0000";
+      }
+
+      wantToSend = true;
+
+      //_log.info(splitData[3].length);
+      //_log.info("Phone hash: ${SkoobHash.skoobHashOnData(splitData[3], SkoobHash.INITSEED).toRadixString(16).toUpperCase()}");
+    }
   }
 
   FutureOr<void> errorConnecting(Object error, StackTrace stackTrace) {
