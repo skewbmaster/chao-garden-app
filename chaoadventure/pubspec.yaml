@@ -46,6 +46,7 @@ dependencies:
   keep_screen_on: ^2.1.0
   audioplayers: ^3.0.1
   logging: ^1.1.1
+  shared_preferences: ^2.0.18
 
 dev_dependencies:
   flutter_test:
@@ -79,6 +80,8 @@ flutter:
     - assets/spinningring.gif
     - assets/chaogardensadxlogo.png
     - assets/chaogardensa2logo.png
+    - assets/bg.png
+    - assets/weedbig.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

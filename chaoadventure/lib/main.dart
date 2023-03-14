@@ -136,71 +136,72 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: 100,
-        actions: const <Widget>[],
-        title: Row(
-          children: <Widget>[
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  ringCount += 10;
-                });
-              },
-              child: Image.asset(
-                "assets/spinningring.gif",
-                height: 64,
-                width: 64,
-                isAntiAlias: true,
-                fit: BoxFit.scaleDown,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: Text(
-                "${ringCount}",
-                style: const TextStyle(
-                  fontFamily: "Blippo",
-                  fontSize: 32,
+    return Stack(children: [
+      Image.asset(
+        "assets/bg.png",
+        height: MediaQuery.of(context).size.height,
+        width: MediaQuery.of(context).size.width,
+        fit: BoxFit.cover,
+      ),
+      Scaffold(
+        appBar: AppBar(
+          toolbarHeight: 100,
+          actions: const <Widget>[],
+          title: Row(
+            children: <Widget>[
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    ringCount += 10;
+                  });
+                },
+                child: Image.asset(
+                  "assets/spinningring.gif",
+                  height: 64,
+                  width: 64,
+                  isAntiAlias: true,
+                  fit: BoxFit.scaleDown,
                 ),
               ),
-            ),
-          ],
-        ),
-        /*Text(
-          "Rings: ${ringCount}",
-          style: const TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
+              Padding(
+                padding: const EdgeInsets.only(left: 10),
+                child: Text(
+                  "${ringCount}",
+                  style: const TextStyle(
+                    fontFamily: "Blippo",
+                    fontSize: 32,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),*/
-        //foregroundColor: const Color(0xFFFFC812),
-        backgroundColor: const Color(0x00000000),
-        elevation: 0,
-      ),
-      /*floatingActionButton: FloatingActionButton(
+          //foregroundColor: const Color(0xFFFFC812),
+          backgroundColor: const Color(0x00000000),
+          elevation: 0,
+        ),
+        /*floatingActionButton: FloatingActionButton(
         onPressed: _incrementCounter,
         tooltip: 'Increment',
         child: const Icon(Icons.add),
       ),*/
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: <Widget>[
-            /*const Text(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: <Widget>[
+              /*const Text(
               'Fuck you:',
             ),
             Text(
               addressString,
               style: Theme.of(context).textTheme.headlineMedium,
             ),*/
-            BottomButtons(openTransferWindow: openTransferWindow),
-          ],
+              BottomButtons(openTransferWindow: openTransferWindow),
+            ],
+          ),
         ),
-      ),
-      backgroundColor: const Color(0xFF00FF00),
-    );
+        backgroundColor: Colors.transparent,
+      )
+    ]);
   }
 
   @override
