@@ -8,7 +8,9 @@
 #define BROADCAST_PORT 8888
 #define TCP_PORT 8889
 
-#define RETRYCOUNT 5
+#define RETRYCOUNTMAX 5
+#define CHAOSENDATTEMPTSMAX 3
+#define CHAORECEIVEATTEMPTSMAX 10
 
 //std::thread connectionThread;
 
@@ -23,6 +25,7 @@ Network::Network(std::string gameName)
 	this->gameName = gameName;
 
 	chaobuffer = new CHAO_PARAM_GC;
+	createNewChaoPointer = nullptr;
 	chaobufferHash = 0;
 }
 
@@ -80,10 +83,11 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 		{
 			shutdown(connectionSocket, SD_SEND);
 			closesocket(connectionSocket);
+			printf("Closing connection\n");
 			return;
 		}
 
-		if (wantToSendChao)
+		if (wantToSendChao && sendChaoAttempts < CHAOSENDATTEMPTSMAX)
 		{
 			sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN SENDCHAO %X ", chaobufferHash);
 			int sizeOfBuffer = strlen(sendbuffer);
@@ -98,6 +102,38 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 				return;
 			}
 			printf("Sent chao: %s\n", sendbuffer);
+			sendChaoAttempts++;
+		}
+		else if (sendChaoAttempts == CHAOSENDATTEMPTSMAX)
+		{
+			chaoSendFail = true;
+			wantToSendChao = false;
+			sendChaoAttempts = 0;
+		}
+
+		if (phoneSendRequesting)
+		{
+			if (acceptSendRequest)
+			{
+				sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN REQUESTACCEPT");
+				send(connectionSocket, sendbuffer, strlen(sendbuffer), 0);
+				if (result == SOCKET_ERROR)
+				{
+					printf("Chao receive failed: %d\n", WSAGetLastError());
+					closesocket(connectionSocket);
+					return;
+				}
+				printf("Chao request accepted\n");
+			}
+			else if (sendChaoAttempts < CHAORECEIVEATTEMPTSMAX)
+			{
+				sendChaoAttempts++;
+			}
+			else
+			{
+				sendChaoAttempts = 0;
+				phoneSendRequesting = false;
+			}
 		}
 
 		result = recv(connectionSocket, recvbuffer, bufferlen, 0);
@@ -106,10 +142,11 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 		case TransferToPhoneSuccess:
 			wantToSendChao = false;
 			chaoSent = true;
+			sendChaoAttempts = 0;
 		case Keepalive:
 			retries = 0;
 
-			if (wantToSendChao)
+			if (wantToSendChao || acceptSendRequest)
 				break;
 
 			sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN KEEPALIVE");
@@ -121,8 +158,19 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 				return;
 			}
 			break;
+		case TransferToPCRequest:
+			phoneSendRequesting = true;
+			break;
+		case TransferToPCConfirmed:
+			if (createNewChaoPointer)
+			{
+				loadReceivedChao(recvbuffer);
+				acceptSendRequest = false;
+				phoneSendRequesting = false;
+			}
+			break;
 		case TransferToPhoneFailure:
-			if (retries == RETRYCOUNT / 2)
+			if (retries == RETRYCOUNTMAX / 2)
 			{
 				chaoSendFail = true;
 				wantToSendChao = false;
@@ -135,7 +183,7 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 			break;
 		case Closed:
 		case Failure:
-			if (retries == RETRYCOUNT)
+			if (retries == RETRYCOUNTMAX)
 			{
 				shutdown(connectionSocket, SD_SEND);
 				closesocket(connectionSocket);
@@ -144,7 +192,7 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 			else
 			{
 				retries++;
-				printf("Failure, retrying %d times out of %d\n", retries, RETRYCOUNT);
+				printf("Failure, retrying %d times out of %d\n", retries, RETRYCOUNTMAX);
 				break;
 			}
 		}
@@ -179,7 +227,7 @@ Network::receivedMessageStatus Network::handleIncomingMessage(char* buffer, int 
 	}
 	int stringOffset = 8;
 
-	std::string msgRequest = recvString.substr(stringOffset, recvString.find(' ', stringOffset));
+	std::string msgRequest = recvString.substr(stringOffset, recvString.find(' ', stringOffset) - stringOffset);
 	stringOffset += msgRequest.length();
 
 	if (msgRequest == "CONNECT")
@@ -206,6 +254,16 @@ Network::receivedMessageStatus Network::handleIncomingMessage(char* buffer, int 
 	{
 		printf("Chao sent wrong\n");
 		return TransferToPhoneFailure;
+	}
+	else if (msgRequest == "REQTOSEND")
+	{
+		printf("Request to send chao\n");
+		return TransferToPCRequest;
+	}
+	else if (msgRequest == "SENDCHAO")
+	{
+		printf("Got chao from phone\n");
+		return TransferToPCConfirmed;
 	}
 }
 
@@ -256,6 +314,7 @@ void Network::runBroadcaster()
 		if (wantToClose)
 		{
 			wantToClose = false;
+			printf("Closing broadcaster\n");
 			return;
 		}
 
@@ -377,9 +436,30 @@ void Network::sendChao(CHAO_PARAM_GC* chaoToSend)
 	wantToSendChao = true;
 }
 
-CHAO_PARAM_GC* Network::receiveChao()
+void Network::receiveChao(CHAO_PARAM_GC* newChaoSlot)
 {
-	return this->chaobuffer;
+	createNewChaoPointer = newChaoSlot;
+	acceptSendRequest = true;
+	//memcpy_s(newChaoSlot, sizeof(CHAO_PARAM_GC), this->chaobuffer, sizeof(CHAO_PARAM_GC));
+}
+
+void Network::loadReceivedChao(char* buffer)
+{
+	int offset = 17;
+	std::string data = std::string(buffer);
+	std::string correctHash = data.substr(offset, data.find(offset, ' ') - offset);
+	offset += correctHash.length();
+
+	memcpy_s(createNewChaoPointer, sizeof(CHAO_PARAM_GC), buffer + offset, sizeof(CHAO_PARAM_GC));
+
+	uint32_t incomingHash = SkoobHashOnMem(createNewChaoPointer, sizeof(CHAO_PARAM_GC), INITSEED);
+	printf("Hash of incoming chao %X\n", incomingHash);
+	if (incomingHash == std::strtoul(correctHash.c_str(), NULL, 16))
+	{
+		printf("Correct chao data tranferred to PC\n");
+		receivedChaoSuccessfully = true;
+	}
+	createNewChaoPointer = nullptr;
 }
 
 void Network::closeBroadcaster()
@@ -455,6 +535,11 @@ int Network::getIsSentChao()
 		return 2; // Fail enum
 	
 	return chaoSent; // 0 for not sent yet, 1 for successfully sent
+}
+
+bool Network::getIsPhoneRequestingSend() 
+{
+	return phoneSendRequesting;
 }
 
 void Network::confirmChaoMessage()

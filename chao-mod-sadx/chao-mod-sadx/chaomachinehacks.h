@@ -36,6 +36,7 @@ FunctionPointer(void, AlMsgSelectSetCursor, (int winid, int cursor), 0x72D370);
 FunctionPointer(bool, AlMsgSelectIsActive, (int winid), 0x72D3D0);
 FunctionPointer(int, AlMsgSelectGetCursor, (int winid), 0x72D3E0);
 
+FunctionPointer(chao_save_info*, AL_GetNewChaoSaveInfo, (), 0x715E60); // Gets next available chao slot
 FunctionPointer(CHAO_PARAM_GC*, AL_GBAManagerGetChaoParam, (), 0x716B70);
 FunctionPointer(void, AL_ClearChaoParam, (CHAO_PARAM_GC*), 0x730B20);
 FunctionPointer(void, AL_GBAManagerClearChaoParam, (), 0x716B40);
@@ -65,5 +66,6 @@ public:
 	static void startNetworkInMachine();
 	static void endNetworkInMachine();
 	static void newOdekakeModes();
+	static void newToridasuModes();
 };
 

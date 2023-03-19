@@ -71,6 +71,20 @@ void setupHacks(Network* network)
 	WriteData(reinterpret_cast<void*>(0x74D4E3), AddCorrectESP2, 4);
 	WriteData(reinterpret_cast<void*>(0x74D55F), AddCorrectESP2, 4);
 
+	WriteCall((void*)0x74C86F, ChaoHacks::newToridasuModes);
+	WriteData<5>((void*)0x74C888, 0x90);
+	WriteData<1>((void*)0x74C88E, 5);
+	/*WriteCall((void*)0x74CAB0, ChaoHacks::newToridasuModes);
+	WriteData<10>((void*)0x74CABD, 0x90);
+	WriteData<char>((char*)0x74CABC, 8);*/
+	WriteCall((void*)0x74CAF6, ChaoHacks::newToridasuModes);
+	WriteData<54>((void*)0x74CAFB, 0x90);
+	WriteData<1>((void*)0x74CB33, 0x18);
+	WriteCall((void*)0x74CB55, ChaoHacks::newToridasuModes);
+	WriteData<66>((void*)0x74CB5A, 0x90);
+	WriteData<1>((void*)0x74CB9E, 8);
+	//WriteData<2>((void*)0x74CB9F, 0x90);
+
 	// To make the game think you have a GBA connected do this, it's not very useful on its own tho
 	char TrickGameGBAConnected[] = { 0xB8, /*this is the enum for what type of connection it is*/0, 0, 0, 0, 0xC3 };
 	WriteData((void*)0x720B06, TrickGameGBAConnected, 6);
@@ -127,14 +141,14 @@ void ChaoHacks::newOdekakeModes()
 		{
 			AlMsgWarnAddLineC(0, (char*)"Warning!");
 			AlMsgWarnWaitCont(0);
-			AlMsgWarnAddLineC(0, (char*)"This will move the chao currently in the machine to the phone");
+			AlMsgWarnAddLineC(0, (char*)"This will move the chao currently in the machine to the phone.");
 			AlMsgWarnWaitCont(0);
 			AlMsgWarnAddLineC(0, (char*)"Are you sure you want to do this?");
 			AL_OdeMenuSetMode(6);
 		}
 		else
 		{
-			AlMsgWarnAddLineC(0, (char*)"Phone not currently connected");
+			AlMsgWarnAddLineC(0, (char*)"Phone not currently connected.");
 			AL_OdeMenuSetMode(20);
 		}
 		AlMsgWarnWaitClose(0);
@@ -181,4 +195,32 @@ void ChaoHacks::newOdekakeModes()
 	case 13:
 		return;
 	}
+}
+
+void ChaoHacks::newToridasuModes()
+{
+	switch (pMaster->mode)
+	{
+	case 3:
+		if (ChaoHacks::networkRef->getIsPhoneRequestingSend())
+		{
+			CHAO_PARAM_GC* newChaoSlot = &AL_GetNewChaoSaveInfo()->param;
+			ChaoHacks::networkRef->receiveChao(newChaoSlot);
+			AL_OdeMenuSetMode(10);
+		}
+		return;
+	case 5:
+		//AlMsgWarnAddLineC(0, (char*)"Your phone isn't already requesting to send its chao.");
+		//AlMsgWarnWaitCont(0);
+		AlMsgWarnAddLineC(0, (char*)"Waiting for request...");
+		AL_OdeMenuSetMode(7);
+		return;
+	case 7:
+		AlMsgSelectCreate(0, 1, 80.0, 280.0, 120.0);
+		AlMsgSelectSetCStr(0, 0, (char*)"Cancel");
+		AlMsgSelectSetCursor(0, 0);
+		return;
+
+	}
+
 }
