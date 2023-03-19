@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:logging/logging.dart';
 import 'package:flutter_launcher_icons/android.dart';
 import 'package:keep_screen_on/keep_screen_on.dart';
@@ -8,15 +9,17 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'src/styles/palette.dart';
+import 'src/styles/textstyles.dart';
 import 'src/network/network.dart';
 import 'src/windows/transferwindow.dart';
 import 'src/chao/chao.dart';
+import 'src/chao/chaooverworld.dart';
 
 Logger _log = Logger('main.dart');
 
-int ringCount = 0;
+bool DEBUG = true;
 
-List<Chao> chaoList = [];
+int ringCount = 0;
 
 void main() {
   Logger.root.onRecord.listen((record) {
@@ -29,7 +32,10 @@ void main() {
 
   runApp(const MyApp());
 
-  ringCount = 1750;
+  if (DEBUG) {
+    ringCount = 1750;
+    //debugPaintPointersEnabled = true;
+  }
 
   _log.info(
       "Width: ${window.physicalSize.width} - Height: ${window.physicalSize.height} - PixelRatio: ${window.devicePixelRatio}");
@@ -95,8 +101,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   late Network network;
 
+  late final ChaoOverWorldDisplay chaoOverworld;
+
+  List<Chao> chaoList = [];
+
   _MyHomePageState() {
     network = Network(_log, addInChao, checkChaoDuplicate);
+    chaoOverworld = ChaoOverWorldDisplay(chaoList: chaoList);
   }
 
   void openTransferWindow() {
@@ -106,7 +117,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }*/
 
     setState(() {
-      Navigator.of(context).push(TransferWindowPopup<void>(network));
+      Navigator.of(context).push(TransferWindowPopup<void>(network, chaoList));
     });
 
     /*showDialog(
@@ -143,6 +154,7 @@ class _MyHomePageState extends State<MyHomePage> {
         width: MediaQuery.of(context).size.width,
         fit: BoxFit.cover,
       ),
+      chaoOverworld,
       Scaffold(
         appBar: AppBar(
           toolbarHeight: 100,
@@ -166,11 +178,8 @@ class _MyHomePageState extends State<MyHomePage> {
               Padding(
                 padding: const EdgeInsets.only(left: 10),
                 child: Text(
-                  "${ringCount}",
-                  style: const TextStyle(
-                    fontFamily: "Blippo",
-                    fontSize: 32,
-                  ),
+                  "$ringCount",
+                  style: ChaoTextStyles.ringsDisplay,
                 ),
               ),
             ],

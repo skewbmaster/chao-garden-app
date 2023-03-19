@@ -1,6 +1,8 @@
 import 'package:chaoadventure/src/network/network.dart';
+import 'package:chaoadventure/src/styles/textstyles.dart';
 import 'package:flutter/material.dart';
 
+import '../chao/chao.dart';
 import 'computertabs.dart';
 import '../network/computers.dart';
 
@@ -26,6 +28,7 @@ class TransferWindowPopup<T> extends PopupRoute<T> {
   Curve get barrierCurve => Curves.easeInSine;
 
   final Network networkRef;
+  final List<Chao> chaoList;
 
   //@override
   //Animation<double> get animation => CurvedAnimation(parent: super., curve: Curves.easeInSine);
@@ -66,45 +69,51 @@ class TransferWindowPopup<T> extends PopupRoute<T> {
     );
   }*/
 
-  TransferWindowPopup(this.networkRef);
+  TransferWindowPopup(this.networkRef, this.chaoList);
 
   @override
   Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
     //_controller = AnimationController(vsync: , duration: Duration(),);
-    return TransferWindow(networkRef: networkRef);
+    return TransferWindow(networkRef: networkRef, chaoList: chaoList);
   }
 }
 
 class TransferWindow extends StatefulWidget {
-  const TransferWindow({Key? key, required this.networkRef}) : super(key: key);
+  const TransferWindow({Key? key, required this.networkRef, required this.chaoList}) : super(key: key);
 
   final Network networkRef;
+  final List<Chao> chaoList;
 
   @override
-  State<TransferWindow> createState() => _TransferWindowState(networkRef);
+  State<TransferWindow> createState() => _TransferWindowState(networkRef, chaoList);
 }
 
 class _TransferWindowState extends State<TransferWindow> {
-  void setCurrentComputers(Computer newComputer) {
+  void setStateHere() {
     setState(() {});
   }
 
   Network networkRef;
   bool tryingToConnect = false;
 
-  _TransferWindowState(this.networkRef) {
+  List<Chao> chaoList;
+
+  _TransferWindowState(this.networkRef, this.chaoList) {
     if (!networkRef.listening && !networkRef.connectedWithComputer) {
       networkRef.mainListen();
     }
 
     if (!networkRef.hasUpdateAvailableComputersFunc) {
-      networkRef.assignTransferWindowFunction(setCurrentComputers);
+      networkRef.assignTransferWindowFunction(setStateHere);
     }
+
+    networkRef.transferWindowShown = true;
   }
 
   @override
   void dispose() {
     networkRef.disposeComputers();
+    networkRef.transferWindowShown = false;
 
     super.dispose();
   }
@@ -128,7 +137,13 @@ class _TransferWindowState extends State<TransferWindow> {
   @override
   Widget build(BuildContext context) {
     Widget content;
-    if (tryingToConnect || networkRef.connectedWithComputer) {
+    if (networkRef.connectedWithComputer) {
+      tryingToConnect = false;
+      content = Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: makeChaoTabs(),
+      );
+    } else if (tryingToConnect) {
       content = Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -136,11 +151,7 @@ class _TransferWindowState extends State<TransferWindow> {
             padding: EdgeInsets.only(bottom: 20),
             child: Text(
               "Connecting",
-              style: TextStyle(
-                inherit: false,
-                fontSize: 30,
-                fontFamily: 'Kimberley',
-              ),
+              style: ChaoTextStyles.transferWindow,
             ),
           ),
           loadingCircle
@@ -155,11 +166,11 @@ class _TransferWindowState extends State<TransferWindow> {
         child: Container(
           width: 280,
           height: 476,
-          padding: EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
           decoration: BoxDecoration(
             border: Border.all(width: 3),
             borderRadius: BorderRadius.circular(30),
-            color: Color(0x80005499),
+            color: const Color(0x80005499),
           ),
           child: content,
         ),
@@ -176,11 +187,7 @@ class _TransferWindowState extends State<TransferWindow> {
           child: Text(
             "Searching for\nComputers",
             textAlign: TextAlign.center,
-            style: TextStyle(
-              inherit: false,
-              fontSize: 30,
-              fontFamily: 'Kimberley',
-            ),
+            style: ChaoTextStyles.transferWindow,
           ),
         ),
       );
@@ -198,6 +205,29 @@ class _TransferWindowState extends State<TransferWindow> {
       mainAxisSize: MainAxisSize.min,
       children: computerTabs,
     );
+  }
+
+  List<Widget> makeChaoTabs() {
+    List<Widget> tabs = [];
+
+    tabs.add(
+      Text(
+        "Connected to\n${networkRef.connectedComputer?.compName}\nTransfer Back:",
+        style: ChaoTextStyles.transferWindow,
+        textAlign: TextAlign.center,
+      ),
+    );
+
+    for (int i = 0; i < chaoList.length; i++) {
+      tabs.add(
+        TextButton(
+          onPressed: () => networkRef.requestToSendChao(chaoList[0]),
+          child: Text(chaoList[i].getName()),
+        ),
+      );
+    }
+
+    return tabs;
   }
 }
 

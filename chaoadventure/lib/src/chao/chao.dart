@@ -1,10 +1,89 @@
+import 'dart:math';
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:vector_math/vector_math.dart';
+
+import '../queue.dart';
+import 'chaobehaviours.dart';
 
 class Chao {
   Uint8List data;
   int initialHash;
 
-  Chao(this.data, this.initialHash);
+  Vector2 position = Vector2.zero();
+  String sprite = "assets/chaosit.png";
+  Queue<ChaoBehaviour> behaviours = Queue();
+  bool showingStats = false;
+  bool showStatsUnder = false;
+
+  Random randomiser = Random();
+
+  Chao(this.data, this.initialHash) {
+    double initX = max(randomiser.nextDouble() * 350, 10);
+    double initY = max(randomiser.nextDouble() * 650, 40);
+
+    position = Vector2(initX, initY);
+  }
+
+  void displayChaoStats() {
+    showingStats = !showingStats;
+
+    if (position.y < 360) {
+      showStatsUnder = true;
+    } else {
+      showStatsUnder = false;
+    }
+  }
+
+  void runBehaviours() {
+    if (behaviours.getSize() < 2) {
+      if (randomiser.nextBool()) {
+        double randX = max(randomiser.nextDouble() * 330, 10);
+        double randY = max(randomiser.nextDouble() * 650, 40);
+        behaviours.push(
+          MoveBehaviour(
+            type: BehaviourType.moving,
+            timer: 0.0,
+            startLocation: position,
+            goToLocation: Vector2(randX, randY),
+          ),
+        );
+      } else {
+        behaviours.push(
+          ChaoBehaviour(type: BehaviourType.idle, timer: randomiser.nextInt(480) + 300),
+        );
+      }
+    }
+
+    ChaoBehaviour currentBehaviour = behaviours.getFirst() as ChaoBehaviour;
+
+    switch (currentBehaviour.type) {
+      case BehaviourType.idle:
+        sprite = "assets/chaosit.png";
+        currentBehaviour.timer--;
+        if (currentBehaviour.timer < 1) {
+          behaviours.pop();
+        }
+        return;
+
+      case BehaviourType.moving:
+        sprite = "assets/chaoidle.png";
+        MoveBehaviour moving = currentBehaviour as MoveBehaviour;
+
+        if (moving.timer == 0) {
+          moving.updateStartPos(position);
+        }
+
+        currentBehaviour.timer += moving.timestep;
+
+        if (moving.timer >= 1) {
+          position = moving.goToLocation;
+          behaviours.pop();
+          return;
+        }
+        position = moving.startLocation + (moving.goToLocation - moving.startLocation) * currentBehaviour.timer;
+    }
+  }
 
   String getName() {
     StringBuffer nameBuilder = StringBuffer();
@@ -12,8 +91,11 @@ class Chao {
     for (int i = 0x12; i < 0x18; i++) {
       if (data[i] == 0) {
         break;
+      } else if (data[i] == 95) {
+        nameBuilder.writeCharCode(0x20);
+      } else {
+        nameBuilder.write(chaoCharDecode[data[i]]);
       }
-      nameBuilder.write(chaoCharDecode[data[i]]);
     }
 
     return nameBuilder.toString() == "" ? "NoName" : nameBuilder.toString();
@@ -135,6 +217,7 @@ Map<int, String> chaoCharDecode = {
   92: "|",
   93: "}",
   94: "~",
+  95: "\u0020",
   96: "À",
   97: "Á",
   98: "Â",
@@ -293,5 +376,6 @@ Map<int, String> chaoCharDecode = {
   251: "…",
   252: "「",
   253: "」",
-  254: "ヴ"
+  254: "ヴ",
+  255: " "
 };

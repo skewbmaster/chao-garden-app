@@ -82,6 +82,8 @@ flutter:
     - assets/chaogardensa2logo.png
     - assets/bg.png
     - assets/weedbig.png
+    - assets/chaoidle.png
+    - assets/chaosit.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
@@ -119,5 +121,8 @@ flutter:
     - family: Kimberley
       fonts:
         - asset: assets/fonts/kimberley.otf
+    - family: SonicAdvanced
+      fonts:
+        - asset: assets/fonts/SonicAdvanced2.ttf
       
 

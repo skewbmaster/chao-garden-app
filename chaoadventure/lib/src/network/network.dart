@@ -17,17 +17,21 @@ class Network {
   InternetAddress receivedIP = InternetAddress.anyIPv4;
 
   List<Computer> availableComputers = <Computer>[];
+  Computer? connectedComputer;
 
   late bool listening;
   late bool connectedWithComputer;
   late bool failureInComms;
   late bool wantToSend;
+  late bool sentConfirmMessage;
+  late bool transferWindowShown;
   late String newSendMessage;
+  late Chao? chaoDataToSend;
 
   final Function(Chao) addInChao;
   final bool Function(int) checkChaoDuplicate;
 
-  late void Function(Computer newComputer) updateAvailableComputers;
+  late void Function() updateTransferWindow;
   late bool hasUpdateAvailableComputersFunc;
 
   Network(this._log, this.addInChao, this.checkChaoDuplicate) {
@@ -37,6 +41,9 @@ class Network {
     connectedWithComputer = false;
     failureInComms = false;
     wantToSend = false;
+    sentConfirmMessage = true;
+    transferWindowShown = false;
+    chaoDataToSend = null;
     newSendMessage = "CHAOADV KEEPALIVE\u0000";
   }
 
@@ -108,7 +115,7 @@ class Network {
       _log.info("New computer detected called ${msgSplit[2]}, they are playing on ${msgSplit[1]}");
 
       if (hasUpdateAvailableComputersFunc) {
-        updateAvailableComputers(newComputer);
+        updateTransferWindow();
       }
     }
   }
@@ -117,6 +124,7 @@ class Network {
     Future<Socket> socket = Socket.connect(computer.address.address, 8889);
     _log.info("Trying to connect socket connection with ${computer.address.address}:8889 - ${computer.compName}");
     // _log.info("Big error with connecting ${error.toString()}");
+    connectedComputer = computer;
     socket.then(runConnection).onError((error, stackTrace) => errorConnecting);
   }
 
@@ -124,6 +132,7 @@ class Network {
     _log.info("Connected to ${socket.remoteAddress}:${socket.remotePort}");
 
     connectedWithComputer = true;
+    //connectedComputer = availableComputers.firstWhere((element) => element.address == socket.address, orElse: () => null);
 
     socket.listen(
       connectionDataHandler,
@@ -131,6 +140,12 @@ class Network {
         _log.info("Done with connection");
         socket.close();
         connectedWithComputer = false;
+        connectedComputer = null;
+        chaoDataToSend = null;
+        newSendMessage = "";
+        if (transferWindowShown) {
+          updateTransferWindow();
+        }
       },
       onError: errorConnecting,
       cancelOnError: false,
@@ -142,7 +157,13 @@ class Network {
       try {
         if (wantToSend) {
           socket.write(newSendMessage);
+          if (chaoDataToSend != null && newSendMessage.contains("SENDCHAO")) {
+            socket.add(chaoDataToSend!.data);
+            chaoDataToSend = null;
+          }
+
           wantToSend = false;
+          sentConfirmMessage = true;
           newSendMessage = "CHAOADV KEEPALIVE\u0000";
         } else {
           socket.write("CHAOADV KEEPALIVE\u0000");
@@ -155,8 +176,12 @@ class Network {
         _log.info("Error interacting with server: $e");
         timer.cancel();
         socket.close();
+        connectedComputer = null;
         connectedWithComputer = false;
         failureInComms = false;
+        if (transferWindowShown) {
+          updateTransferWindow();
+        }
       }
     });
   }
@@ -174,39 +199,59 @@ class Network {
 
     if (splitData[1] == "ACCEPT") {
       _log.info("Computer accepted connection");
+      if (transferWindowShown) {
+        updateTransferWindow();
+      }
     } else if (splitData[1] == "KEEPALIVE") {
       _log.info("Computer sent keepalive message");
     } else if (splitData[1] == "SENDCHAO") {
+      int lastPartOffset = data.indexOf(' ', 21) + 1;
+      _log.info(lastPartOffset);
+      Uint8List chaodata = Uint8List.fromList(stream.getRange(lastPartOffset, stream.length).toList());
       int? hash = int.tryParse(splitData[2], radix: 16);
-      int selfhash = SkoobHash.skoobHashOnData(splitData[3], SkoobHash.INITSEED);
+      int selfhash = SkoobHash.skoobHashOnData(chaodata, SkoobHash.INITSEED);
 
       if (checkChaoDuplicate(hash!)) {
         _log.info("Already sent this chao");
+        newSendMessage = "CHAOADV CHAOBAD\u0000";
         return;
       }
 
       if (hash == selfhash) {
         _log.info("Successfully received chao data");
-        Chao receivedChao = Chao(Uint8List.fromList(splitData[3].codeUnits), selfhash);
+        Chao receivedChao = Chao(chaodata, selfhash);
         addInChao(receivedChao);
         newSendMessage = "CHAOADV CHAOGOOD\u0000";
-      } else {
+        sentConfirmMessage = false;
+      } else if (sentConfirmMessage) {
         newSendMessage = "CHAOADV CHAOBAD\u0000";
+        _log.info("Selfhash: ${selfhash.toRadixString(16)}");
       }
 
       wantToSend = true;
-
       //_log.info(splitData[3].length);
       //_log.info("Phone hash: ${SkoobHash.skoobHashOnData(splitData[3], SkoobHash.INITSEED).toRadixString(16).toUpperCase()}");
+    } else if (splitData[1] == "REQUESTACCEPT" && chaoDataToSend != null) {
+      String hashOfData = SkoobHash.skoobHashOnData(chaoDataToSend!.data, SkoobHash.INITSEED).toRadixString(16).toUpperCase();
+      newSendMessage = "CHAOADV SENDCHAO $hashOfData ";
+      wantToSend = true;
+      _log.info("Request to send accepted");
     }
+  }
+
+  void requestToSendChao(Chao chao) {
+    chaoDataToSend = chao;
+    newSendMessage = "CHAOADV REQTOSEND\u0000";
+    wantToSend = true;
+    _log.info("Sending chao ${chao.getName()}");
   }
 
   FutureOr<void> errorConnecting(Object error, StackTrace stackTrace) {
     _log.info("Big error with connecting ${error.toString()}");
   }
 
-  void assignTransferWindowFunction(final void Function(Computer) updateFunc) {
-    updateAvailableComputers = updateFunc;
+  void assignTransferWindowFunction(final void Function() updateFunc) {
+    updateTransferWindow = updateFunc;
     hasUpdateAvailableComputersFunc = true;
   }
 
