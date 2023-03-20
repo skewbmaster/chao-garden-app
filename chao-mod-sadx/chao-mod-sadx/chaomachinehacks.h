@@ -51,7 +51,6 @@ DataPointer(char, quitSelectionState, 0x3CE0570);
 
 
 void setupHacks(Network* network);
-void newOdekake();
 void CreateAllMainMenuBars();
 
 class ChaoHacks

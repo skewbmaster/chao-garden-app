@@ -23,6 +23,7 @@ void setupHacks(Network* network)
 	WriteData<1>((void*)0x72DC9E, 1); // Initial cursor position
 	WriteData<1>((void*)0x72DB7A, 1); // Return cursor position
 
+	// Overwrite the main menu creation segment
 	WriteCall((void*)0x74D7A6, &CreateAllMainMenuBars);
 	WriteData<72>((void*)0x74D7AB, 0x90);
 	char AddCorrectESP[] = { 0x81, 0xC4, 0xE8, 0, 0, 0 };
@@ -58,7 +59,7 @@ void setupHacks(Network* network)
 	WriteData<float>((float*)0x74C6AF, 284.0f);
 	WriteData<float>((float*)0x74C6C2, 368.0f);
 
-	// Write in new functions
+	// Write in new functions and correct stack pointer
 	WriteJump((void*)0x719C60, ChaoHacks::startNetworkInMachine);
 	WriteCall((void*)0x719A90, ChaoHacks::endNetworkInMachine);
 	WriteCall((void*)0x74CF14, ChaoHacks::newOdekakeModes);
@@ -99,7 +100,6 @@ void CreateAllMainMenuBars()
 	CreateMainMenuBar(2, 320.0, 260.0, 0x26, namingSelectionState);
 	CreateMainMenuBar(3, 320.0, 316.0, 0x2E, goodbyeSelectionState);
 	CreateMainMenuBar(4, 320.0, 372.0, 0x36, quitSelectionState);
-
 	// We want to jump back to the original function before the compiled function can do anything else like a return
 	__asm 
 	{
@@ -108,6 +108,8 @@ void CreateAllMainMenuBars()
 	}
 }
 
+// Start a new thread running runBroadcaster but also
+// running with the made network object
 void ChaoHacks::startNetworkInMachine()
 {
 	serverThread = std::thread(&Network::runBroadcaster, ChaoHacks::networkRef);
@@ -115,11 +117,14 @@ void ChaoHacks::startNetworkInMachine()
 
 void ChaoHacks::endNetworkInMachine()
 {
+	// The function call overwrites a stop music call so we have to run it ourselves
 	StopMusic();
 	ChaoHacks::networkRef->closeBroadcaster();
 	serverThread.join();
 }
 
+// Quick rewrite of the same function the game uses to change the mode
+// of the transport machine, which can be called instead of jumped to
 void AL_OdeMenuSetMode(int mode)
 {
 	if (pMaster)
@@ -135,6 +140,7 @@ void ChaoHacks::newOdekakeModes()
 	switch (pMaster->mode)
 	{
 	case 3:
+		// This makes our own dialog box which I can populate with my own strings
 		AlMsgWarnCreate(0, 80.0f, 96.0f, 480.0f, 144.0f);
 		AlMsgWarnOpen(0);
 		if (ChaoHacks::networkRef->getIsConnected())
@@ -148,12 +154,14 @@ void ChaoHacks::newOdekakeModes()
 		}
 		else
 		{
+			// Immediately stop any attempt at drop off if not already connected
 			AlMsgWarnAddLineC(0, (char*)"Phone not currently connected.");
 			AL_OdeMenuSetMode(20);
 		}
 		AlMsgWarnWaitClose(0);
 		return;
 	case 6:
+		// This makes a new selection box to confirm if you want to send the chao
 		if (AlMsgWarnGetStatus(0) == 0)
 		{
 			AlMsgSelectCreate(0, 2, 80.0f, 272.0f, 120.0f);
@@ -167,6 +175,7 @@ void ChaoHacks::newOdekakeModes()
 	case 16: // Yes Selection
 		AlMsgWarnClear(0);
 		AlMsgWarnAddLineC(0, (char*)"Sending...");
+		// This function gets the pointer at which the GBAManager points to the chao took into the machine
 		ChaoHacks::networkRef->sendChao(AL_GBAManagerGetChaoParam());
 		AL_OdeMenuSetMode(17);
 		return;
@@ -174,11 +183,14 @@ void ChaoHacks::newOdekakeModes()
 		switch (ChaoHacks::networkRef->getIsSentChao())
 		{
 		case 0:
+			// Looping case where if the function returns 0 it waits until success or failure
 			return;
 		case 1:
+			// If successfully transported it says on the dialog
 			AlMsgWarnAddLineC(0, (char*)"Sent successfully!");
 			AlMsgWarnWaitClose(0);
 			PlaySound(640, 0, 0, 0);
+			// Remove the chao from the garden since it's been "transported"
 			AL_ClearChaoParam(AL_GBAManagerGetChaoParam());
 			AL_GBAManagerClearChaoParam();
 			AL_OdeMenuSetMode(18);
@@ -202,20 +214,24 @@ void ChaoHacks::newToridasuModes()
 	switch (pMaster->mode)
 	{
 	case 3:
+		// If the phone requested to send a chao
 		if (ChaoHacks::networkRef->getIsPhoneRequestingSend())
 		{
+			// In-game function that finds the next available chao slot in memory
 			CHAO_PARAM_GC* newChaoSlot = &AL_GetNewChaoSaveInfo()->param;
 			ChaoHacks::networkRef->receiveChao(newChaoSlot);
 			AL_OdeMenuSetMode(10);
 		}
 		return;
 	case 5:
-		//AlMsgWarnAddLineC(0, (char*)"Your phone isn't already requesting to send its chao.");
-		//AlMsgWarnWaitCont(0);
+		// Display some text to allow user to send chao on phone
 		AlMsgWarnAddLineC(0, (char*)"Waiting for request...");
+		AlMsgWarnWaitCont(0);
+		AlMsgWarnAddLineC(0, (char*)"Successfully received chao!");
 		AL_OdeMenuSetMode(7);
 		return;
 	case 7:
+		// Make one option to cancel waiting
 		AlMsgSelectCreate(0, 1, 80.0, 280.0, 120.0);
 		AlMsgSelectSetCStr(0, 0, (char*)"Cancel");
 		AlMsgSelectSetCursor(0, 0);

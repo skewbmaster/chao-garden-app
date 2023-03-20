@@ -14,6 +14,7 @@
 
 //std::thread connectionThread;
 
+// Constructor allocates memory for sockets and chao buffer
 Network::Network(std::string gameName)
 {
 	broadcastSocket = INVALID_SOCKET;
@@ -29,6 +30,7 @@ Network::Network(std::string gameName)
 	chaobufferHash = 0;
 }
 
+// Nice compact function to change the blocking state of a socket
 void Network::setNonBlocking(SOCKET* socket, bool state)
 {
 	u_long ulstate = (u_long)state;
@@ -44,6 +46,7 @@ void Network::setNonBlocking(SOCKET* socket, bool state)
 
 void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, int addrLen)
 {
+	// Make buffers for sending and receiving
 	const int bufferlen = 2048;
 	char recvbuffer[bufferlen];
 	char sendbuffer[bufferlen];
@@ -52,6 +55,7 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 
 	printf("Address to recvbuffer: %X\n", (int)&recvbuffer);
 
+	// Initially do a few message handles as we only need ACCEPT
 	switch (handleIncomingMessage(recvbuffer, result))
 	{
 	case ConnectRequest:
@@ -79,6 +83,7 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 
 	while (true)
 	{
+		// Always check if we need to close the connection
 		if (wantToClose)
 		{
 			shutdown(connectionSocket, SD_SEND);
@@ -87,10 +92,13 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 			return;
 		}
 
+		// If we want to send a chao and we've not attempted it enough then it runs this
 		if (wantToSendChao && sendChaoAttempts < CHAOSENDATTEMPTSMAX)
 		{
+			// String is make into the buffer but the chao data will need more care as they have 0 delimiters
 			sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN SENDCHAO %X ", chaobufferHash);
 			int sizeOfBuffer = strlen(sendbuffer);
+			// Have to use memcpy to fit the buffer with all the data
 			memcpy_s(sendbuffer + sizeOfBuffer, bufferlen - sizeOfBuffer, chaobuffer, sizeof(CHAO_PARAM_GC));
 			sizeOfBuffer += sizeof(CHAO_PARAM_GC);
 			send(connectionSocket, sendbuffer, sizeOfBuffer, 0);
@@ -106,13 +114,16 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 		}
 		else if (sendChaoAttempts == CHAOSENDATTEMPTSMAX)
 		{
+			// Only fails if sent too many times
 			chaoSendFail = true;
 			wantToSendChao = false;
 			sendChaoAttempts = 0;
 		}
 
+		// First runs if phone requests to send chao
 		if (phoneSendRequesting)
 		{
+			// This then runs if the player has pressed pick up
 			if (acceptSendRequest)
 			{
 				sprintf_s(sendbuffer, bufferlen, "CHAOGARDEN REQUESTACCEPT");
@@ -145,6 +156,8 @@ void Network::runConnection(SOCKET connectionSocket, sockaddr* connectionAddr, i
 			sendChaoAttempts = 0;
 		case Keepalive:
 			retries = 0;
+
+			// Keep connection alive at all times unless there's different events
 
 			if (wantToSendChao || acceptSendRequest)
 				break;
@@ -219,6 +232,7 @@ Network::receivedMessageStatus Network::handleIncomingMessage(char* buffer, int 
 
 	std::string recvString = (std::string)buffer;
 
+	// If the message doesn't start with CHAOADV, it isn't a chao adventure message
 	printf("Data received: %s\n", buffer);
 	if (recvString.substr(0, 7) != "CHAOADV" || recvString.length() < 9)
 	{
@@ -275,14 +289,17 @@ void Network::runBroadcaster()
 
 	int randNum = rand();
 
+	// Get host name so app gets to identify the computer name
 	char hostname[256];
 	gethostname(hostname, 256);
 
 	char sendBuffer[1024];
 	sprintf_s<1024>(sendBuffer, "CHAOGARDEN SADX %s", hostname);
 
+	// This is a periodic loop so the comms socket needs to not block the execution flow
 	setNonBlocking(&commsSocket, true);
 
+	// Allow 5 devices to listen to 
 	if (listen(commsSocket, 5) == SOCKET_ERROR)
 	{
 		printf("Comms socket listen failed with error: %d\n", WSAGetLastError());
@@ -301,16 +318,18 @@ void Network::runBroadcaster()
 			printf("Attempted to broadcast %s\n", sendBuffer);
 		}
 
+		// Accept is non-blocking but if something attempts to connect it will be accepted
 		AcceptSocket = accept(commsSocket, acceptedAddr, &acceptedAddrLen);
 
 		if (AcceptSocket != INVALID_SOCKET)
 		{
 			printf("Accepted socket\n");
-			//setNonBlocking(&commsSocket, false);
+			// Move execution to another function, there is no needs for the broadcaster anymore
 			runConnection(AcceptSocket, acceptedAddr, acceptedAddrLen);
 			isConnected = false;
 		}
 
+		// If we want to close the comms down from the shutdown functions then it'll get here at the next earliest point
 		if (wantToClose)
 		{
 			wantToClose = false;
@@ -318,12 +337,14 @@ void Network::runBroadcaster()
 			return;
 		}
 
+		// Broadcaster doesn't need to run constantly, let it rest for a second
 		std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 	}
 }
 
 void Network::setupServer()
 {
+	// Find broadcast IP address of the network
 	std::string localBroadcastIP;
 	int iResult = findValidLocalBroadcastIP(localBroadcastIP);
 	if (iResult != 0)
@@ -336,6 +357,7 @@ void Network::setupServer()
 		printf("Broadcasting to: %s\n", localBroadcastIP.c_str());
 	}
 
+	// We will be using windows for the mod so winsock is a wise choice
 	WSADATA wsaData;
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	printf("Used WSAStartup!\n");
@@ -350,21 +372,25 @@ void Network::setupServer()
 		printf("Winsock DLL status is %s\n", wsaData.szSystemStatus);
 	}
 
+	// Hints allow the getaddrinfo functions to make the correct sockets
 	addrinfo hints_broadcast;
 	addrinfo hints_comms;
 	memset(&hints_broadcast, 0, sizeof(hints_broadcast));
 	memset(&hints_comms, 0, sizeof(hints_comms));
 
+	// Populate the broadcast hints with UDP specifications
 	hints_broadcast.ai_family = AF_UNSPEC;
 	hints_broadcast.ai_socktype = SOCK_DGRAM;
 	hints_broadcast.ai_protocol = IPPROTO_UDP;
 	hints_broadcast.ai_flags = AI_ADDRCONFIG;
 
+	// Populate the communications hints with TCP specifications
 	hints_comms.ai_family = AF_INET;
 	hints_comms.ai_socktype = SOCK_STREAM;
 	hints_comms.ai_protocol = IPPROTO_TCP;
 	hints_comms.ai_flags = AI_PASSIVE;
 
+	// Make broadcastSocket with a lot of error checking
 	addrinfo* getaddrinfo_results = nullptr;
 	iResult = getaddrinfo(localBroadcastIP.c_str(), std::to_string(BROADCAST_PORT).c_str(), &hints_broadcast, &getaddrinfo_results);
 	if (iResult != 0)
@@ -388,6 +414,7 @@ void Network::setupServer()
 		return;
 	}
 
+	// Make commsSocket with a lot of error checking
 	iResult = getaddrinfo(NULL, std::to_string(TCP_PORT).c_str(), &hints_comms, &getaddrinfo_results);
 	if (iResult != 0)
 	{
@@ -411,6 +438,7 @@ void Network::setupServer()
 		return;
 	}
 
+	// Attempt to bind the commsSocket to 0.0.0.0 and port 8889 which allows it to accept any connection request on that port
 	iResult = bind(commsSocket, static_cast<SOCKADDR*>(socket_addrinfo_recver->ai_addr), socklen_t(socket_addrinfo_recver->ai_addrlen));
 	if (iResult == SOCKET_ERROR)
 	{
@@ -431,20 +459,24 @@ void Network::setupServer()
 
 void Network::sendChao(CHAO_PARAM_GC* chaoToSend)
 {
+	// Safely copy the chaoToSend data into the chaobuffer
 	memcpy_s(this->chaobuffer, sizeof(CHAO_PARAM_GC), chaoToSend, sizeof(CHAO_PARAM_GC));
+	// Hash the data ready for sending
 	chaobufferHash = SkoobHashOnMem(this->chaobuffer, sizeof(CHAO_PARAM_GC), INITSEED);
 	wantToSendChao = true;
 }
 
 void Network::receiveChao(CHAO_PARAM_GC* newChaoSlot)
 {
+	// Allow the connection function to see we want to load in the received chao
 	createNewChaoPointer = newChaoSlot;
 	acceptSendRequest = true;
-	//memcpy_s(newChaoSlot, sizeof(CHAO_PARAM_GC), this->chaobuffer, sizeof(CHAO_PARAM_GC));
 }
 
 void Network::loadReceivedChao(char* buffer)
 {
+	// Dart is higher level than C++ so there needs to be more work done to decode the message
+	// as the chao data usually contains 0s which end strings in C
 	int offset = 17;
 	std::string data = std::string(buffer);
 	std::string correctHash = data.substr(offset, data.find(offset, ' ') - offset);
@@ -452,6 +484,7 @@ void Network::loadReceivedChao(char* buffer)
 
 	memcpy_s(createNewChaoPointer, sizeof(CHAO_PARAM_GC), buffer + offset, sizeof(CHAO_PARAM_GC));
 
+	// Check if hash in the message matches the hash of the loaded data
 	uint32_t incomingHash = SkoobHashOnMem(createNewChaoPointer, sizeof(CHAO_PARAM_GC), INITSEED);
 	printf("Hash of incoming chao %X\n", incomingHash);
 	if (incomingHash == std::strtoul(correctHash.c_str(), NULL, 16))
@@ -481,6 +514,7 @@ void Network::cleanupNetwork()
 
 int Network::findValidLocalBroadcastIP(std::string& broadcastIP)
 {
+	// Attempt to get the windows IP address table and load it into our own memory
 	PMIB_IPADDRTABLE IPTable = (MIB_IPADDRTABLE*)malloc(sizeof(MIB_IPADDRTABLE));
 	if (IPTable == NULL)
 	{
@@ -503,6 +537,7 @@ int Network::findValidLocalBroadcastIP(std::string& broadcastIP)
 		return 2;
 	}
 
+	// Iterate through the table and check if the primaryIP matches a network class' private IP range
 	for (int i = 0; i < IPTable->dwNumEntries; i++)
 	{
 		IN_ADDR PrimaryIPAddr;

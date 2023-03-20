@@ -8,7 +8,6 @@ std::string modpath;
 Network network = Network("SADX");
 ChaoHacks chaohacks = ChaoHacks(&network);
 
-
 extern "C"
 {
 	__declspec(dllexport) void __cdecl Init(const char* path, const HelperFunctions& helper_funcs)
@@ -17,12 +16,12 @@ extern "C"
 		modpath = path;
 
 		network.setupServer();
-
-		//ChaoHacks chaohacks = ChaoHacks(&network);
 	}
 
 	__declspec(dllexport) void __cdecl OnFrame()
 	{
+		// Change the output of the get GBA connection kind function regardless of what's
+		// happening so that the GBA is shown if the phone is connected
 		if (network.getIsConnected())
 		{
 			WriteData<1>((void*)0x720B07, 3);
@@ -33,21 +32,9 @@ extern "C"
 		}
 	}
 
-	__declspec(dllexport) void __cdecl OnInput()
-	{
-		/*if (Controllers[0].PressedButtons & Buttons_Y && Controllers[0].HeldButtons & Buttons_Left)
-		{
-			if (serverThread.joinable())
-				serverThread.join();
-
-			printf("started broadcaster\n");
-
-			serverThread = std::thread(&Network::runBroadcaster, &network);
-		}*/
-	}
-
 	__declspec(dllexport) void __cdecl OnExit()
 	{
+		// Thankfully this is called when the game is quit so 
 		printf("exiting\n");
 		network.cleanupNetwork();
 
